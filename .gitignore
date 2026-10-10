@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.next/
+deploy/config.env
+loadtest/tokens.json
+.env
+*.key.json

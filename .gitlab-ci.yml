@@ -1,0 +1,69 @@
+# GitLab CI/CD -> Cloud Run, blue/green.
+# Required CI/CD variables (Settings > CI/CD > Variables, masked + protected):
+#   GCP_PROJECT_ID, GCP_REGION (asia-southeast1), GCP_SA_KEY (base64 of a deployer service-account key)
+# Better for production: Workload Identity Federation instead of a long-lived key.
+stages: [test, build, deploy, release]
+
+default:
+  interruptible: true
+
+variables:
+  REPO: health
+
+.gcloud:
+  image: google/cloud-sdk:slim
+  before_script:
+    - echo "$GCP_SA_KEY" | base64 -d > /tmp/key.json
+    - gcloud auth activate-service-account --key-file /tmp/key.json
+    - gcloud config set project "$GCP_PROJECT_ID"
+    - export REG="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$REPO"
+
+test:api:
+  stage: test
+  image: node:20-alpine
+  script: [cd api, npm ci, npm run build]
+
+test:web:
+  stage: test
+  image: node:20-alpine
+  script: [cd web, npm ci, npm run build]
+
+build:
+  extends: .gcloud
+  stage: build
+  rules: [{ if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH' }]
+  script:
+    - gcloud builds submit api --tag "$REG/api:$CI_COMMIT_SHORT_SHA" --quiet
+    - gcloud builds submit web --tag "$REG/web:$CI_COMMIT_SHORT_SHA" --quiet
+
+deploy:green:
+  extends: .gcloud
+  stage: deploy
+  rules: [{ if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH' }]
+  script:
+    # New revisions get 0% traffic and the "green" tag; config is inherited from the live service.
+    - gcloud run deploy health-api --region "$GCP_REGION" --image "$REG/api:$CI_COMMIT_SHORT_SHA" --no-traffic --tag green --quiet
+    - gcloud run deploy health-web --region "$GCP_REGION" --image "$REG/web:$CI_COMMIT_SHORT_SHA" --no-traffic --tag green --quiet
+    - API=$(gcloud run services describe health-api --region "$GCP_REGION" --format='value(status.url)')
+    - GREEN=${API/https:\/\//https://green---}
+    - curl -fsS "$GREEN/healthz"
+    - curl -fsS "$GREEN/readyz"
+
+promote:
+  extends: .gcloud
+  stage: release
+  rules: [{ if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH', when: manual }]
+  script:
+    - gcloud run services update-traffic health-api --region "$GCP_REGION" --to-tags green=100 --quiet
+    - gcloud run services update-traffic health-web --region "$GCP_REGION" --to-tags green=100 --quiet
+
+rollback:
+  extends: .gcloud
+  stage: release
+  rules: [{ if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH', when: manual }]
+  script:
+    - |
+      for s in health-api health-web; do
+        PREV=$(gcloud run revisions list --service $s --region "$GCP_REGION" --sort-by=~metadata.creationTimestamp --format='value(metadata.name)' | sed -n 2p)
+        gcloud run services update-traffic $s --region "$GCP_REGION" --to-revisions "$PREV=100" --quiet
+      done

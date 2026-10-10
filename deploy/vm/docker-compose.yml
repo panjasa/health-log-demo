@@ -1,0 +1,37 @@
+# Runs on the observability VM. Redis and the OTLP endpoint are reachable only
+# from Cloud Run's subnet (firewall); Grafana/Jaeger/Prometheus only via IAP tunnel.
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 256mb --maxmemory-policy noeviction"]
+    environment: [REDIS_PASSWORD]
+    ports: ["6379:6379"]
+    restart: unless-stopped
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    ports: ["16686:16686"]
+    restart: unless-stopped
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otel/config.yaml"]
+    environment: [OTEL_INGEST_TOKEN]
+    volumes: ["./observability/otel-collector.yaml:/etc/otel/config.yaml:ro"]
+    ports: ["4318:4318"]
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes: ["./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/health-api.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    restart: unless-stopped

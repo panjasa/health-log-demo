@@ -1,0 +1,40 @@
+# Not deployed in the demo. Shows how the same API image would run on GKE/EKS
+# once there are several services and a platform team (see docs/adr/0001).
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: health-api }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: health-api } }
+  template:
+    metadata: { labels: { app: health-api } }
+    spec:
+      containers:
+        - name: api
+          image: REGION-docker.pkg.dev/PROJECT/health/api:TAG
+          ports: [{ containerPort: 8080 }]
+          envFrom: [{ secretRef: { name: health-api } }, { configMapRef: { name: health-api } }]
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          startupProbe: { httpGet: { path: /readyz, port: 8080 }, periodSeconds: 5, failureThreshold: 12 }
+          readinessProbe: { httpGet: { path: /readyz, port: 8080 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 15 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: health-api }
+spec:
+  selector: { app: health-api }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: health-api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: health-api }
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }

@@ -1,0 +1,42 @@
+# Receives OTLP from the API (traces + metrics) and fans out:
+#   traces  -> Jaeger
+#   metrics -> Prometheus (scraped from :8889)
+extensions:
+  bearertokenauth:
+    token: ${env:OTEL_INGEST_TOKEN}
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
+
+processors:
+  batch: {}
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  extensions: [bearertokenauth, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

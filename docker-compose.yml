@@ -1,0 +1,81 @@
+# Local full stack: same pieces as the cloud setup.
+#   docker compose up --build
+#   Web      http://localhost:3000
+#   API      http://localhost:8080
+#   Grafana  http://localhost:3001  (admin / admin)
+#   Jaeger   http://localhost:16686
+#   Prometheus http://localhost:9090
+services:
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+    volumes: [mongo-data:/data/db]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "localdev"]
+    ports: ["6379:6379"]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otel/config.yaml"]
+    environment:
+      OTEL_INGEST_TOKEN: localdev
+    volumes: ["./observability/otel-collector.yaml:/etc/otel/config.yaml:ro"]
+    ports: ["4318:4318"]
+    depends_on: [jaeger]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+    depends_on: [otel-collector]
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/health-api.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus, jaeger]
+
+  api:
+    build: ./api
+    environment:
+      PORT: "8080"
+      MONGO_URI: mongodb://mongo:27017
+      REDIS_URL: redis://:localdev@redis:6379
+      JWT_SECRET: local-dev-secret-change-me
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      WEB_ORIGIN: http://localhost:3000
+      DEV_LOGIN: "true"
+      WAITING_ROOM_ENABLED: "true"
+      WAITING_ROOM_ADMIT_PER_SEC: "5"
+      RATE_LIMIT_PER_MIN: "60"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_INGEST_TOKEN: localdev
+    ports: ["8080:8080"]
+    depends_on: [mongo, redis, otel-collector]
+
+  web:
+    build: ./web
+    environment:
+      PORT: "3000"
+      API_URL: http://localhost:8080
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  mongo-data:

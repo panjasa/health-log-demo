@@ -1,0 +1,517 @@
+{
+ "uid": "health-api",
+ "title": "Health API \u00b7 Golden Signals",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "tags": [
+  "demo"
+ ],
+ "panels": [
+  {
+   "id": 1,
+   "type": "stat",
+   "title": "Requests / sec",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(rate(api_requests_total[1m]))"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "p95 latency",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_duration_milliseconds_bucket[1m])))"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "5xx error rate",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(sum(rate(api_requests_total{status=~\"5..\"}[1m])) or vector(0)) / clamp_min(sum(rate(api_requests_total[1m])), 0.001)"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "Rate limited / sec",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(rate(rate_limited_total[1m])) or vector(0)"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "Waiting in queue",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(waiting_room_queue_length) or vector(0)"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "stat",
+   "title": "Active API instances",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "value",
+    "graphMode": "area"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(count by (instance) (rate(api_requests_total[2m]) > 0)) or vector(0)"
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Traffic by status",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (status) (rate(api_requests_total[1m]))",
+     "legendFormat": "{{status}}"
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Latency p50 / p95 / p99",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_0.5uantile(0.5, sum by (le) (rate(api_re0.5uest_duration_milliseconds_bucket[1m])))",
+     "legendFormat": "p50"
+    },
+    {
+     "refId": "B",
+     "expr": "histogram_0.95uantile(0.95, sum by (le) (rate(api_re0.95uest_duration_milliseconds_bucket[1m])))",
+     "legendFormat": "p95"
+    },
+    {
+     "refId": "C",
+     "expr": "histogram_0.99uantile(0.99, sum by (le) (rate(api_re0.99uest_duration_milliseconds_bucket[1m])))",
+     "legendFormat": "p99"
+    }
+   ]
+  },
+  {
+   "id": 9,
+   "type": "timeseries",
+   "title": "Rate limit (429) by scope",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (scope) (rate(rate_limited_total[1m]))",
+     "legendFormat": "{{scope}}"
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "type": "timeseries",
+   "title": "Waiting room",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(waiting_room_queue_length)",
+     "legendFormat": "waiting"
+    },
+    {
+     "refId": "B",
+     "expr": "sum(rate(waiting_room_joined_total[1m]))",
+     "legendFormat": "joined/s"
+    },
+    {
+     "refId": "C",
+     "expr": "sum(rate(waiting_room_admitted_total[1m]))",
+     "legendFormat": "admitted/s"
+    }
+   ]
+  },
+  {
+   "id": 11,
+   "type": "timeseries",
+   "title": "Traffic by route",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (route) (rate(api_requests_total[1m]))",
+     "legendFormat": "{{route}}"
+    }
+   ]
+  },
+  {
+   "id": 12,
+   "type": "timeseries",
+   "title": "Instances (Cloud Run scale-out)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(count by (instance) (rate(api_requests_total[2m]) > 0))",
+     "legendFormat": "instances"
+    }
+   ]
+  }
+ ],
+ "timezone": "browser"
+}

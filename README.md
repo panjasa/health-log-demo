@@ -9,6 +9,8 @@ login ด้วย Gmail, rate limit, waiting room, health check, blue/green, mo
 
 ลำดับ request ทีละขั้น และ load balancer อยู่ตรงไหน: [docs/request-flow.svg](docs/request-flow.svg)
 
+คู่มือหน้างาน (URL, เช็กลิสต์ก่อนโชว์, ลำดับเดโม, แก้ปัญหา): [docs/runbook.md](docs/runbook.md)
+
 ## แต่ละส่วนทำอะไร
 
 | ส่วน | ใช้อะไร | ทำไม |

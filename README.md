@@ -7,6 +7,8 @@ login ด้วย Gmail, rate limit, waiting room, health check, blue/green, mo
 
 ![Architecture](docs/architecture.svg)
 
+ลำดับ request ทีละขั้น และ load balancer อยู่ตรงไหน: [docs/request-flow.svg](docs/request-flow.svg)
+
 ## แต่ละส่วนทำอะไร
 
 | ส่วน | ใช้อะไร | ทำไม |

@@ -1,0 +1,90 @@
+# GitHub Actions -> Cloud Run, blue/green (same flow as .gitlab-ci.yml).
+# Settings > Secrets and variables > Actions:
+#   Secret   GCP_SA_KEY     = JSON key of a deployer service account
+#                             (Cloud Run Admin, Cloud Build Editor, Service Account User, Artifact Registry Writer)
+#   Variable GCP_PROJECT_ID = your project id
+#   Variable GCP_REGION     = asia-southeast1
+# Better for production: Workload Identity Federation instead of a long-lived key.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "promote green to 100%, or roll back to the previous revision"
+        type: choice
+        options: [promote, rollback]
+
+env:
+  REPO: health
+
+jobs:
+  test:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: ${{ matrix.app }}
+
+  deploy-green:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build images
+        run: |
+          REG="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO"
+          TAG="${GITHUB_SHA::7}"
+          gcloud config set project "${{ vars.GCP_PROJECT_ID }}"
+          gcloud builds submit api --tag "$REG/api:$TAG" --quiet
+          gcloud builds submit web --tag "$REG/web:$TAG" --quiet
+      - name: Deploy green (0% traffic) and health check
+        run: |
+          REG="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO"
+          TAG="${GITHUB_SHA::7}"
+          R="${{ vars.GCP_REGION }}"
+          gcloud run deploy health-api --region "$R" --image "$REG/api:$TAG" --no-traffic --tag green --quiet
+          gcloud run deploy health-web --region "$R" --image "$REG/web:$TAG" --no-traffic --tag green --quiet
+          API=$(gcloud run services describe health-api --region "$R" --format='value(status.url)')
+          GREEN="${API/https:\/\//https://green---}"
+          curl -fsS "$GREEN/healthz"
+          curl -fsS "$GREEN/readyz"
+          echo "Green is healthy. Run this workflow manually with action=promote to switch traffic." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: ${{ inputs.action }}
+        run: |
+          R="${{ vars.GCP_REGION }}"
+          gcloud config set project "${{ vars.GCP_PROJECT_ID }}"
+          for s in health-api health-web; do
+            if [ "${{ inputs.action }}" = promote ]; then
+              gcloud run services update-traffic $s --region "$R" --to-tags green=100 --quiet
+            else
+              PREV=$(gcloud run revisions list --service $s --region "$R" --sort-by=~metadata.creationTimestamp --format='value(metadata.name)' | sed -n 2p)
+              gcloud run services update-traffic $s --region "$R" --to-revisions "$PREV=100" --quiet
+            fi
+          done

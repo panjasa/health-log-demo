@@ -22,7 +22,7 @@ login ด้วย Gmail, rate limit, waiting room, health check, blue/green, mo
 | Traces | OpenTelemetry → Collector → Jaeger | เห็น request ทีละ hop ถึง Mongo และ Redis |
 | Logs | JSON ลง stdout → Cloud Logging | มี request id และ trace id ร้อยกับ Jaeger |
 | Deploy | Cloud Build + Cloud Run revisions | blue/green: revision ใหม่ 0% traffic → ทดสอบ → promote / rollback |
-| CI/CD | GitLab CI | test → build → deploy green → promote (manual) |
+| CI/CD | GitHub Actions / GitLab CI | test → build → deploy green → promote (manual) |
 
 ## รันในเครื่อง (ทุกชิ้นเหมือนบน cloud)
 
@@ -70,6 +70,12 @@ cp deploy/config.env.example deploy/config.env   # ใส่ PROJECT_ID
 | Load test บน cloud | `./loadtest/run-cloud.sh spike -e TARGET_RPS=300` |
 | Blue/green | `./deploy/bluegreen.sh green api` → ทดสอบ green URL → `promote api` หรือ `rollback api` |
 | ปิดทุกอย่างหลังเดโม | `./deploy/99-teardown.sh` |
+
+### GitHub Actions
+
+`.github/workflows/deploy.yml` ทำ flow เดียวกับ GitLab CI
+ตั้งใน Settings → Secrets and variables → Actions: secret `GCP_SA_KEY` (JSON key ของ service account ที่มีสิทธิ์ Cloud Run Admin, Cloud Build Editor, Service Account User, Artifact Registry Writer), variables `GCP_PROJECT_ID`, `GCP_REGION`
+push เข้า main: test → build → deploy green (0% traffic) + health check → กด Run workflow เลือก `promote` หรือ `rollback`
 
 ### GitLab CI
 

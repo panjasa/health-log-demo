@@ -17,7 +17,7 @@ if (endpoint) {
   process.env.OTEL_SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'health-api';
   // Unique per process, so Grafana can count running Cloud Run instances.
   const instanceId = process.env.K_REVISION ? `${process.env.K_REVISION}-${randomUUID().slice(0, 8)}` : randomUUID();
-  process.env.OTEL_RESOURCE_ATTRIBUTES = [process.env.OTEL_RESOURCE_ATTRIBUTES, `service.instance.id=${instanceId}`, `service.version=${process.env.K_REVISION || 'local'}`].filter(Boolean).join(',');
+  process.env.OTEL_RESOURCE_ATTRIBUTES = [process.env.OTEL_RESOURCE_ATTRIBUTES, `service.instance.id=${instanceId}`, `service.version=${process.env.APP_VERSION || 'dev'}`, `vcs.revision=${process.env.GIT_SHA || 'local'}`, `cloud_run.revision=${process.env.K_REVISION || 'local'}`].filter(Boolean).join(',');
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers }),
     metricReader: new metrics.PeriodicExportingMetricReader({

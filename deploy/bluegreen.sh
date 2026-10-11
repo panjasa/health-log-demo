@@ -16,10 +16,12 @@ case "$ACTION" in
   green)
     TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%s)-$(date +%H%M%S)
     gcloud builds submit "../$WHICH" --tag "$REG/$WHICH:$TAG" --quiet
-    gcloud run deploy "$SERVICE" --region "$REGION" --image "$REG/$WHICH:$TAG" --no-traffic --tag green --quiet
+    APP_VERSION=$(tr -d '[:space:]' < ../VERSION 2>/dev/null || echo dev)
+    gcloud run deploy "$SERVICE" --region "$REGION" --image "$REG/$WHICH:$TAG" --no-traffic --tag green \
+      --update-env-vars "APP_VERSION=$APP_VERSION,GIT_SHA=${TAG%%-*}" --quiet
     URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
     echo "Green revision is live with 0% traffic. Test it at: ${URL/https:\/\//https://green---}"
-    [ "$WHICH" = api ] && echo "  curl ${URL/https:\/\//https://green---}/readyz"
+    [ "$WHICH" = api ] && echo "  curl ${URL/https:\/\//https://green---}/version"
     ;;
   promote)
     gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-tags green=100 --quiet ;;

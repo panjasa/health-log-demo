@@ -4,7 +4,7 @@ import { redis } from '../common/redis';
 import { config } from '../common/config';
 import { rateLimited } from '../common/metrics';
 
-const EXEMPT = new Set(['/healthz', '/readyz']);
+const EXEMPT = new Set(['/healthz', '/readyz', '/version']);
 
 // Fixed-window counter in Redis, shared by every Cloud Run instance.
 // Keyed per user when a token is present, otherwise per client IP.

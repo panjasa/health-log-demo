@@ -1,5 +1,6 @@
 # GitHub Actions -> Cloud Run, blue/green, no service-account key.
-# Push to main: test -> build -> deploy "green" (0% traffic) -> health check -> promote to 100%.
+# Push to main: test -> build -> deploy "green" (0% traffic) -> health check -> promote to 100% -> git tag vX.Y.Z.
+# Version comes from the VERSION file; bump it (and CHANGELOG.md) to release a new version.
 # If the health check fails, traffic never moves: users stay on the old revision.
 # Manual rollback: Actions > deploy > Run workflow > action = rollback.
 # One-time setup in Cloud Shell: ./deploy/04-setup-github-ci.sh
@@ -53,8 +54,19 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the vX.Y.Z git tag
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+      - name: Read version
+        run: |
+          V=$(tr -d '[:space:]' < VERSION)
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "VERSION must be X.Y.Z, got '$V'"; exit 1; }
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "GIT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          # Readable, unique revision names in the Cloud Run console, e.g. health-api-v1-0-0-abc1234-1
+          echo "REV_SUFFIX=v${V//./-}-${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
@@ -69,8 +81,11 @@ jobs:
       - name: Deploy green (0% traffic)
         run: |
           REG="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"; TAG="${GITHUB_SHA::7}"
-          gcloud run deploy health-api --region "$REGION" --image "$REG/api:$TAG" --no-traffic --tag green --quiet
-          gcloud run deploy health-web --region "$REGION" --image "$REG/web:$TAG" --no-traffic --tag green --quiet
+          VARS="APP_VERSION=$APP_VERSION,GIT_SHA=$GIT_SHA"
+          gcloud run deploy health-api --region "$REGION" --image "$REG/api:$TAG" --no-traffic --tag green \
+            --revision-suffix "$REV_SUFFIX" --update-env-vars "$VARS" --quiet
+          gcloud run deploy health-web --region "$REGION" --image "$REG/web:$TAG" --no-traffic --tag green \
+            --revision-suffix "$REV_SUFFIX" --update-env-vars "$VARS" --quiet
       - name: Health check green
         run: |
           API=$(gcloud run services describe health-api --region "$REGION" --format='value(status.url)')
@@ -79,12 +94,26 @@ jobs:
           for i in 1 2 3 4 5 6; do curl -fsS "$GA/readyz" && break; echo "retry $i"; sleep 10; done
           curl -fsS "$GA/readyz"
           curl -fsS -o /dev/null "$GW/"
-          echo "green API: $GA" >> "$GITHUB_STEP_SUMMARY"
+          # Make sure green really runs the version we just built.
+          GOT=$(curl -fsS "$GA/version")
+          echo "$GOT"
+          echo "$GOT" | grep -q "\"version\":\"$APP_VERSION\"" || { echo "green reports wrong version"; exit 1; }
+          echo "$GOT" | grep -q "\"commit\":\"$GIT_SHA\"" || { echo "green reports wrong commit"; exit 1; }
+          echo "green API: $GA ($GOT)" >> "$GITHUB_STEP_SUMMARY"
       - name: Promote green to 100%
         run: |
           gcloud run services update-traffic health-api --region "$REGION" --to-tags green=100 --quiet
           gcloud run services update-traffic health-web --region "$REGION" --to-tags green=100 --quiet
-          echo "Promoted ${GITHUB_SHA::7} to 100%. Roll back: Actions > deploy > Run workflow > rollback" >> "$GITHUB_STEP_SUMMARY"
+          echo "Promoted v$APP_VERSION ($GIT_SHA) to 100%. Roll back: Actions > deploy > Run workflow > rollback" >> "$GITHUB_STEP_SUMMARY"
+      - name: Tag release v${{ env.APP_VERSION }}
+        run: |
+          T="v$APP_VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$T" >/dev/null; then
+            echo "Tag $T already exists (bump VERSION for a new release)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            git tag "$T" "$GITHUB_SHA" && git push origin "$T"
+            echo "Tagged $T" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   release:
     if: github.event_name == 'workflow_dispatch'

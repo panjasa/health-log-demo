@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"; source ./config.env
 gcloud config set project "$PROJECT_ID" >/dev/null
 TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)
+APP_VERSION=$(tr -d '[:space:]' < ../VERSION 2>/dev/null || echo dev)
+echo "==> Version v$APP_VERSION ($TAG)"
 REG="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"
 SA="health-run@${PROJECT_ID}.iam.gserviceaccount.com"
 VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$ZONE" --format='value(networkInterfaces[0].networkIP)')
@@ -20,7 +22,7 @@ gcloud run deploy "$API_SERVICE" --region "$REGION" --image "$REG/api:$TAG" \
   --service-account "$SA" --allow-unauthenticated --port 8080 \
   --cpu 1 --memory 512Mi --concurrency 80 --min-instances 0 --max-instances "$MAX_INSTANCES" \
   --network "$NETWORK" --subnet "$SUBNET" --vpc-egress private-ranges-only \
-  --set-env-vars "REDIS_URL=redis://$VM_IP:6379,OTEL_EXPORTER_OTLP_ENDPOINT=http://$VM_IP:4318,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,WAITING_ROOM_ENABLED=true,WAITING_ROOM_ADMIT_PER_SEC=$WAITING_ROOM_ADMIT_PER_SEC,RATE_LIMIT_PER_MIN=$RATE_LIMIT_PER_MIN,DEV_LOGIN=false,MONGO_POOL=5" \
+  --set-env-vars "REDIS_URL=redis://$VM_IP:6379,OTEL_EXPORTER_OTLP_ENDPOINT=http://$VM_IP:4318,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,WAITING_ROOM_ENABLED=true,WAITING_ROOM_ADMIT_PER_SEC=$WAITING_ROOM_ADMIT_PER_SEC,RATE_LIMIT_PER_MIN=$RATE_LIMIT_PER_MIN,DEV_LOGIN=false,MONGO_POOL=5,APP_VERSION=$APP_VERSION,GIT_SHA=$TAG" \
   --set-secrets "MONGO_URI=mongo-uri:latest,JWT_SECRET=jwt-secret:latest,REDIS_PASSWORD=redis-password:latest,OTEL_INGEST_TOKEN=otel-ingest-token:latest,GOOGLE_CLIENT_ID=google-client-id:latest" \
   --quiet
 API_URL=$(gcloud run services describe "$API_SERVICE" --region "$REGION" --format='value(status.url)')
@@ -35,7 +37,7 @@ echo "==> Deploy Web"
 gcloud run deploy "$WEB_SERVICE" --region "$REGION" --image "$REG/web:$TAG" \
   --service-account "$SA" --allow-unauthenticated --port 8080 \
   --cpu 1 --memory 512Mi --min-instances 0 --max-instances 5 \
-  --set-env-vars "API_URL=$API_URL" --set-secrets "GOOGLE_CLIENT_ID=google-client-id:latest" --quiet
+  --set-env-vars "API_URL=$API_URL,APP_VERSION=$APP_VERSION,GIT_SHA=$TAG" --set-secrets "GOOGLE_CLIENT_ID=google-client-id:latest" --quiet
 WEB_URL=$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)')
 
 if [ -n "${ADMIN_EMAILS:-}" ]; then

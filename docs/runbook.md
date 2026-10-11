@@ -112,14 +112,21 @@ gcloud secrets versions add mongo-uri --data-file=-   # วางค่าให
 ./deploy/03-deploy.sh                                 # deploy ใหม่ให้ใช้ค่าล่าสุด
 ```
 
-## 5. ดู request ต่อ user
+## 5. เวอร์ชัน
+
+- ตัวที่รันอยู่: https://health-api-4iscnqzvvq-as.a.run.app/version และท้ายหน้าเว็บ (Web vX · commit | API vX · commit)
+- ออกเวอร์ชันใหม่: แก้ `VERSION` (เช่น `1.0.1` แก้บั๊ก, `1.1.0` ฟีเจอร์ใหม่) + `CHANGELOG.md` แล้ว push เข้า main
+- push โดยไม่แก้ `VERSION` ก็ deploy ได้ เลขเวอร์ชันเดิมแต่ commit เปลี่ยน
+- ย้อนกลับไปเวอร์ชันก่อน: Actions → deploy → Run workflow → `rollback` แล้วเช็ก `/version`
+
+## 6. ดู request ต่อ user
 
 - Jaeger (Grafana Explore → Jaeger): Service `health-api` → Tags `enduser.id=<userId>`
 - จำนวนต่อวัน: `GET /admin/usage?email=<email>` พร้อม header `Authorization: Bearer <token ของ admin>`
 - ตั้ง admin ครั้งเดียว: `gcloud run services update health-api --region asia-southeast1 --update-env-vars "^|^ADMIN_EMAILS=you@gmail.com"` (หรือใส่ `ADMIN_EMAILS` ใน `deploy/config.env` แล้ว `03-deploy.sh` จะตั้งให้)
 - หลัง deploy ฟีเจอร์นี้ ต้อง logout/login ใหม่ token ถึงจะมี userId
 
-## 6. Deploy อัตโนมัติจาก GitHub
+## 7. Deploy อัตโนมัติจาก GitHub
 
 ตั้งครั้งเดียว (Cloud Shell): `./deploy/04-setup-github-ci.sh`
 
@@ -127,7 +134,7 @@ gcloud secrets versions add mongo-uri --data-file=-   # วางค่าให
 ดูสถานะ: https://github.com/panjasa/health-log-demo/actions
 ย้อนกลับ: Actions → deploy → Run workflow → `rollback`
 
-## 7. ค่าใช้จ่ายและการปิดระบบ
+## 8. ค่าใช้จ่ายและการปิดระบบ
 
 | ส่วน | ค่าใช้จ่าย |
 | --- | --- |

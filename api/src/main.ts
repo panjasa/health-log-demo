@@ -13,7 +13,7 @@ async function bootstrap() {
   app.enableCors({
     origin: config.webOrigin,
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Admission-Token', 'X-Request-Id'],
-    exposedHeaders: ['X-Request-Id', 'Retry-After', 'X-RateLimit-Remaining'],
+    exposedHeaders: ['X-Request-Id', 'Retry-After', 'X-RateLimit-Remaining', 'X-App-Version'],
   });
   app.enableShutdownHooks();
   getDb().catch((e) => console.error(JSON.stringify({ severity: 'ERROR', msg: 'mongo connect failed', err: e.message })));

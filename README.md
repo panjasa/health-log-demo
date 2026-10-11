@@ -96,6 +96,12 @@ health check ไม่ผ่าน = traffic ไม่ย้าย ผู้ใ�
 | VM e2-medium (Redis + monitoring) | ~$25–35, ปิดได้ด้วย teardown |
 | Secret Manager, Artifact Registry, Cloud Build, Logging | แทบ 0 |
 
+## เวอร์ชัน
+
+- เลขเวอร์ชันอยู่ในไฟล์ [`VERSION`](VERSION) (เริ่ม `1.0.0`, แบบ semver) ประวัติอยู่ใน [`CHANGELOG.md`](CHANGELOG.md)
+- ดูว่าตัวไหนรันอยู่: `GET /version` → `{version, commit, revision}`, header `X-App-Version: 1.0.0+abc1234` ทุก response, ท้ายหน้าเว็บ, `service.version` ใน trace, ชื่อ revision ใน Cloud Run (`health-api-v1-0-0-abc1234-1`)
+- ออกเวอร์ชันใหม่: แก้ `VERSION` + `CHANGELOG.md` → push เข้า main → CI deploy, เช็กว่า green รายงานเวอร์ชันถูก, promote แล้วสร้าง git tag `vX.Y.Z`
+
 ## นับ request ต่อ user
 
 - ทุก request ที่ login แล้ว: ติด `enduser.id` (= `users._id`) ที่ root HTTP span และ span ของ handler → ค้นใน Jaeger ด้วย tag `enduser.id=<userId>`

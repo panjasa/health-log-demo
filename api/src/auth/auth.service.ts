@@ -8,6 +8,8 @@ export interface AppUser {
   sub: string;
   email: string;
   name?: string;
+  /** users._id as a hex string. Missing on tokens issued before it was added. */
+  uid?: string;
 }
 
 @Injectable()
@@ -36,24 +38,25 @@ export class AuthService {
 
   private async issue(user: AppUser) {
     const db = await getDb();
-    await db
+    const doc = await db
       .collection('users')
-      .updateOne(
+      .findOneAndUpdate(
         { email: user.email },
         { $set: { sub: user.sub, name: user.name, lastLoginAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
-        { upsert: true },
+        { upsert: true, returnDocument: 'after' },
       );
-    const token = jwt.sign({ sub: user.sub, email: user.email, name: user.name, typ: 'access' }, config.jwtSecret, {
+    const uid = doc?._id?.toString();
+    const token = jwt.sign({ sub: user.sub, uid, email: user.email, name: user.name, typ: 'access' }, config.jwtSecret, {
       expiresIn: '8h',
     });
-    return { token, user };
+    return { token, user: { ...user, uid } };
   }
 
   verify(token: string): AppUser {
     try {
       const p = jwt.verify(token, config.jwtSecret) as any;
       if (p.typ !== 'access') throw new Error('wrong type');
-      return { sub: p.sub, email: p.email, name: p.name };
+      return { sub: p.sub, email: p.email, name: p.name, uid: typeof p.uid === 'string' ? p.uid : undefined };
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }

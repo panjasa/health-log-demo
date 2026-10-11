@@ -38,6 +38,12 @@ gcloud run deploy "$WEB_SERVICE" --region "$REGION" --image "$REG/web:$TAG" \
   --set-env-vars "API_URL=$API_URL" --set-secrets "GOOGLE_CLIENT_ID=google-client-id:latest" --quiet
 WEB_URL=$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)')
 
+if [ -n "${ADMIN_EMAILS:-}" ]; then
+  echo "==> Admins for /admin/* (ADMIN_EMAILS)"
+  # ^|^ = use | as the list delimiter, because the value itself contains commas.
+  gcloud run services update "$API_SERVICE" --region "$REGION" --update-env-vars "^|^ADMIN_EMAILS=$ADMIN_EMAILS" --quiet
+fi
+
 echo "==> Allow the web origin on the API (CORS)"
 gcloud run services update "$API_SERVICE" --region "$REGION" --update-env-vars "WEB_ORIGIN=$WEB_URL" --quiet
 

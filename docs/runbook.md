@@ -112,7 +112,14 @@ gcloud secrets versions add mongo-uri --data-file=-   # วางค่าให
 ./deploy/03-deploy.sh                                 # deploy ใหม่ให้ใช้ค่าล่าสุด
 ```
 
-## 5. Deploy อัตโนมัติจาก GitHub
+## 5. ดู request ต่อ user
+
+- Jaeger (Grafana Explore → Jaeger): Service `health-api` → Tags `enduser.id=<userId>`
+- จำนวนต่อวัน: `GET /admin/usage?email=<email>` พร้อม header `Authorization: Bearer <token ของ admin>`
+- ตั้ง admin ครั้งเดียว: `gcloud run services update health-api --region asia-southeast1 --update-env-vars "^|^ADMIN_EMAILS=you@gmail.com"` (หรือใส่ `ADMIN_EMAILS` ใน `deploy/config.env` แล้ว `03-deploy.sh` จะตั้งให้)
+- หลัง deploy ฟีเจอร์นี้ ต้อง logout/login ใหม่ token ถึงจะมี userId
+
+## 6. Deploy อัตโนมัติจาก GitHub
 
 ตั้งครั้งเดียว (Cloud Shell): `./deploy/04-setup-github-ci.sh`
 
@@ -120,7 +127,7 @@ gcloud secrets versions add mongo-uri --data-file=-   # วางค่าให
 ดูสถานะ: https://github.com/panjasa/health-log-demo/actions
 ย้อนกลับ: Actions → deploy → Run workflow → `rollback`
 
-## 6. ค่าใช้จ่ายและการปิดระบบ
+## 7. ค่าใช้จ่ายและการปิดระบบ
 
 | ส่วน | ค่าใช้จ่าย |
 | --- | --- |

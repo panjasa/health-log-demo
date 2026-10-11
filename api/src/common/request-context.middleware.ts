@@ -38,6 +38,7 @@ export class RequestContextMiddleware implements NestMiddleware {
           status: res.statusCode,
           durationMs: Math.round(ms),
           userId: (req as any).user?.sub,
+          uid: (req as any).user?.uid,
         }),
       );
     });

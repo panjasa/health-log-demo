@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { IncomingMessage } from 'http';
+import { hasSensitiveQuery, redactUrl, setRootSpan } from './common/otel';
 // Loaded with `node -r ./dist/tracing.js` so instrumentation is active before
 // Express, MongoDB and ioredis are imported. Sends traces and metrics over OTLP
 // to the OpenTelemetry Collector, which fans out to Jaeger and Prometheus.
@@ -27,6 +29,23 @@ if (endpoint) {
         '@opentelemetry/instrumentation-fs': { enabled: false },
         '@opentelemetry/instrumentation-dns': { enabled: false },
         '@opentelemetry/instrumentation-net': { enabled: false },
+        // Record only the command and key name, never argument values.
+        '@opentelemetry/instrumentation-ioredis': {
+          dbStatementSerializer: (cmd, args) => (args.length && typeof args[0] === 'string' ? `${cmd} ${args[0]}` : cmd),
+        },
+        // Keep the server span on the request so UserUsageInterceptor can tag the
+        // root span with enduser.id (outgoing client requests are ignored).
+        '@opentelemetry/instrumentation-http': {
+          requestHook: (span, req) => {
+            if (!(req instanceof IncomingMessage)) return;
+            setRootSpan(req, span);
+            if (hasSensitiveQuery(req.url)) {
+              const target = redactUrl(req.url!);
+              span.setAttribute('http.target', target);
+              span.setAttribute('http.url', `http://${req.headers.host}${target}`);
+            }
+          },
+        },
       }),
     ],
   });

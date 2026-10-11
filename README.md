@@ -96,6 +96,14 @@ health check ไม่ผ่าน = traffic ไม่ย้าย ผู้ใ�
 | VM e2-medium (Redis + monitoring) | ~$25–35, ปิดได้ด้วย teardown |
 | Secret Manager, Artifact Registry, Cloud Build, Logging | แทบ 0 |
 
+## นับ request ต่อ user
+
+- ทุก request ที่ login แล้ว: ติด `enduser.id` (= `users._id`) ที่ root HTTP span และ span ของ handler → ค้นใน Jaeger ด้วย tag `enduser.id=<userId>`
+- นับใน Redis `usage:{userId}:{YYYY-MM-DD ตามเวลา Bangkok}` (pipeline INCR + EXPIRE 90 วัน, ไม่ await, ไม่สร้าง span)
+- `GET /admin/usage?email=...|userId=...&from=YYYY-MM-DD&to=YYYY-MM-DD` (default 30 วัน, สูงสุด 90) ต้องเป็นอีเมลใน `ADMIN_EMAILS`
+- ไม่ใส่ userId/email เป็น label ของ Prometheus (cardinality) และไม่ใส่ email ลง span: query `email=` ถูก redact, Redis span เก็บแค่ชื่อคำสั่ง + key
+- token ที่ออกก่อนฟีเจอร์นี้ไม่มี `uid` จะไม่ถูกนับจนกว่าจะ login ใหม่
+
 ## Trade-off ที่ตั้งใจเลือก
 
 ดูรายละเอียดใน [`docs/adr`](docs/adr)

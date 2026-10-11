@@ -20,7 +20,9 @@ export class RateLimitGuard implements CanActivate {
     let key: string;
     let limit: number;
     const h: string | undefined = req.headers.authorization;
-    const sub = h?.startsWith('Bearer ') ? (jwt.decode(h.slice(7)) as any)?.sub : undefined;
+    const claims = h?.startsWith('Bearer ') ? (jwt.decode(h.slice(7)) as any) : undefined;
+    // Prefer the opaque users._id so keys (and Redis spans) carry no email-like ids.
+    const sub: string | undefined = claims?.uid || claims?.sub;
     if (sub) {
       key = `rl:u:${sub}`;
       limit = config.rateLimit.perUserPerMinute;

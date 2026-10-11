@@ -112,7 +112,15 @@ gcloud secrets versions add mongo-uri --data-file=-   # วางค่าให
 ./deploy/03-deploy.sh                                 # deploy ใหม่ให้ใช้ค่าล่าสุด
 ```
 
-## 5. ค่าใช้จ่ายและการปิดระบบ
+## 5. Deploy อัตโนมัติจาก GitHub
+
+ตั้งครั้งเดียว (Cloud Shell): `./deploy/04-setup-github-ci.sh`
+
+หลังจากนั้นแก้โค้ดแล้ว push เข้า `main` → GitHub Actions ทำให้เอง: test → build → green 0% → `/readyz` → promote 100%
+ดูสถานะ: https://github.com/panjasa/health-log-demo/actions
+ย้อนกลับ: Actions → deploy → Run workflow → `rollback`
+
+## 6. ค่าใช้จ่ายและการปิดระบบ
 
 | ส่วน | ค่าใช้จ่าย |
 | --- | --- |

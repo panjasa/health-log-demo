@@ -75,11 +75,12 @@ cp deploy/config.env.example deploy/config.env   # ใส่ PROJECT_ID
 | Blue/green | `./deploy/bluegreen.sh green api` → ทดสอบ green URL → `promote api` หรือ `rollback api` |
 | ปิดทุกอย่างหลังเดโม | `./deploy/99-teardown.sh` |
 
-### GitHub Actions
+### GitHub Actions (deploy อัตโนมัติ, ไม่ใช้ key)
 
-`.github/workflows/deploy.yml` ทำ flow เดียวกับ GitLab CI
-ตั้งใน Settings → Secrets and variables → Actions: secret `GCP_SA_KEY` (JSON key ของ service account ที่มีสิทธิ์ Cloud Run Admin, Cloud Build Editor, Service Account User, Artifact Registry Writer), variables `GCP_PROJECT_ID`, `GCP_REGION`
-push เข้า main: test → build → deploy green (0% traffic) + health check → กด Run workflow เลือก `promote` หรือ `rollback`
+ตั้งครั้งเดียวใน Cloud Shell: `./deploy/04-setup-github-ci.sh` (Workload Identity Federation: GitHub ได้ token อายุสั้นต่อ run, Google เชื่อเฉพาะ repo นี้ ไม่มี key ให้หลุด)
+
+push เข้า main: test → build → deploy green (0% traffic) → health check `/readyz` → promote 100% อัตโนมัติ
+health check ไม่ผ่าน = traffic ไม่ย้าย ผู้ใช้ยังอยู่ revision เดิม · rollback: Actions → deploy → Run workflow → `rollback`
 
 ### GitLab CI
 

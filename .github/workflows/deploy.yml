@@ -1,10 +1,8 @@
-# GitHub Actions -> Cloud Run, blue/green (same flow as .gitlab-ci.yml).
-# Settings > Secrets and variables > Actions:
-#   Secret   GCP_SA_KEY     = JSON key of a deployer service account
-#                             (Cloud Run Admin, Cloud Build Editor, Service Account User, Artifact Registry Writer)
-#   Variable GCP_PROJECT_ID = your project id
-#   Variable GCP_REGION     = asia-southeast1
-# Better for production: Workload Identity Federation instead of a long-lived key.
+# GitHub Actions -> Cloud Run, blue/green, no service-account key.
+# Push to main: test -> build -> deploy "green" (0% traffic) -> health check -> promote to 100%.
+# If the health check fails, traffic never moves: users stay on the old revision.
+# Manual rollback: Actions > deploy > Run workflow > action = rollback.
+# One-time setup in Cloud Shell: ./deploy/04-setup-github-ci.sh
 name: deploy
 
 on:
@@ -14,12 +12,25 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "promote green to 100%, or roll back to the previous revision"
+        description: "rollback = send 100% traffic back to the previous revision; promote = send 100% to green"
         type: choice
-        options: [promote, rollback]
+        options: [rollback, promote]
 
+# Not secrets: project id, region, and the keyless-auth identifiers.
 env:
+  PROJECT_ID: health-log-demo
+  REGION: asia-southeast1
   REPO: health
+  WIF_PROVIDER: projects/5526432093/locations/global/workloadIdentityPools/github/providers/github-provider
+  DEPLOYER_SA: gha-deployer@health-log-demo.iam.gserviceaccount.com
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # lets the job request a GitHub OIDC token for Workload Identity Federation
 
 jobs:
   test:
@@ -38,7 +49,7 @@ jobs:
       - run: npm ci && npm run build
         working-directory: ${{ matrix.app }}
 
-  deploy-green:
+  deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -46,27 +57,34 @@ jobs:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build images
+      - name: Build images (Cloud Build)
         run: |
-          REG="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO"
-          TAG="${GITHUB_SHA::7}"
-          gcloud config set project "${{ vars.GCP_PROJECT_ID }}"
+          gcloud config set project "$PROJECT_ID"
+          REG="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"; TAG="${GITHUB_SHA::7}"
           gcloud builds submit api --tag "$REG/api:$TAG" --quiet
           gcloud builds submit web --tag "$REG/web:$TAG" --quiet
-      - name: Deploy green (0% traffic) and health check
+      - name: Deploy green (0% traffic)
         run: |
-          REG="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/$REPO"
-          TAG="${GITHUB_SHA::7}"
-          R="${{ vars.GCP_REGION }}"
-          gcloud run deploy health-api --region "$R" --image "$REG/api:$TAG" --no-traffic --tag green --quiet
-          gcloud run deploy health-web --region "$R" --image "$REG/web:$TAG" --no-traffic --tag green --quiet
-          API=$(gcloud run services describe health-api --region "$R" --format='value(status.url)')
-          GREEN="${API/https:\/\//https://green---}"
-          curl -fsS "$GREEN/healthz"
-          curl -fsS "$GREEN/readyz"
-          echo "Green is healthy. Run this workflow manually with action=promote to switch traffic." >> "$GITHUB_STEP_SUMMARY"
+          REG="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"; TAG="${GITHUB_SHA::7}"
+          gcloud run deploy health-api --region "$REGION" --image "$REG/api:$TAG" --no-traffic --tag green --quiet
+          gcloud run deploy health-web --region "$REGION" --image "$REG/web:$TAG" --no-traffic --tag green --quiet
+      - name: Health check green
+        run: |
+          API=$(gcloud run services describe health-api --region "$REGION" --format='value(status.url)')
+          WEB=$(gcloud run services describe health-web --region "$REGION" --format='value(status.url)')
+          GA="${API/https:\/\//https://green---}"; GW="${WEB/https:\/\//https://green---}"
+          for i in 1 2 3 4 5 6; do curl -fsS "$GA/readyz" && break; echo "retry $i"; sleep 10; done
+          curl -fsS "$GA/readyz"
+          curl -fsS -o /dev/null "$GW/"
+          echo "green API: $GA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Promote green to 100%
+        run: |
+          gcloud run services update-traffic health-api --region "$REGION" --to-tags green=100 --quiet
+          gcloud run services update-traffic health-web --region "$REGION" --to-tags green=100 --quiet
+          echo "Promoted ${GITHUB_SHA::7} to 100%. Roll back: Actions > deploy > Run workflow > rollback" >> "$GITHUB_STEP_SUMMARY"
 
   release:
     if: github.event_name == 'workflow_dispatch'
@@ -74,17 +92,17 @@ jobs:
     steps:
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: ${{ inputs.action }}
         run: |
-          R="${{ vars.GCP_REGION }}"
-          gcloud config set project "${{ vars.GCP_PROJECT_ID }}"
+          gcloud config set project "$PROJECT_ID"
           for s in health-api health-web; do
             if [ "${{ inputs.action }}" = promote ]; then
-              gcloud run services update-traffic $s --region "$R" --to-tags green=100 --quiet
+              gcloud run services update-traffic $s --region "$REGION" --to-tags green=100 --quiet
             else
-              PREV=$(gcloud run revisions list --service $s --region "$R" --sort-by=~metadata.creationTimestamp --format='value(metadata.name)' | sed -n 2p)
-              gcloud run services update-traffic $s --region "$R" --to-revisions "$PREV=100" --quiet
+              PREV=$(gcloud run revisions list --service $s --region "$REGION" --sort-by=~metadata.creationTimestamp --format='value(metadata.name)' | sed -n 2p)
+              gcloud run services update-traffic $s --region "$REGION" --to-revisions "$PREV=100" --quiet
             fi
           done
